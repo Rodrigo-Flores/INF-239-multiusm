@@ -1,4 +1,5 @@
 import re
+from select import select
 import pyodbc
 
 
@@ -59,7 +60,8 @@ class Menu:
     def mostrar_carrito(self) -> None:
         self.cursor.execute('SELECT * FROM test_tarea1_inf239.dbo.Carrito')
         for row in self.cursor:
-            print(row)
+            print("ID: {0} | Nombre: {1} | Marca: {2} | Cantidad: {3}".format(
+                row[0], row[1], row[2], row[3]))
 
     def agregar_producto(self) -> None:
         prod_id = input("Ingrese el ID del producto: ")
@@ -79,18 +81,15 @@ class Menu:
                 row = self.cursor.fetchone()
                 self.cursor.execute(
                     'INSERT INTO test_tarea1_inf239.dbo.Carrito VALUES (?, ?, ?, ?);', row[0], row[1], row[3], quantity)
-                self.cursor.execute(
-                    'SELECT * FROM test_tarea1_inf239.dbo.Oferta WHERE prod_id = ?;', prod_id)
-                offer = self.cursor.fetchone()
-                if offer:
-                    self.cursor.execute(
-                        'INSERT INTO test_tarea1_inf239.dbo.Boleta VALUES (?, ?, ?, ?);', row[0], offer[1], row[5], row[5])
-                else:
-                    self.cursor.execute(
-                        'INSERT INTO test_tarea1_inf239.dbo.Boleta VALUES (?, ?, ?, ?);', row[0], '1x1', row[5], row[5])
-                self.cursor.commit()
             except pyodbc.ProgrammingError:
                 print("Producto no existe")
+        self.cursor.execute(
+            'SELECT * FROM test_tarea1_inf239.dbo.Oferta WHERE prod_id = ?;', prod_id)
+        row = self.cursor.fetchone()
+        if row:
+            self.cursor.execute(
+                'UPDATE test_tarea1_inf239.dbo.Oferta SET offer = ? WHERE prod_id = ?;', row[1], prod_id)
+        self.cursor.commit()
 
     def mostrar_top_5(self) -> None:
         self.cursor.execute(
@@ -108,33 +107,38 @@ class Menu:
                 row[0], row[1], row[2], row[3], row[4], row[5]))
 
     def finalizar_compra(self) -> None:
-        self.cursor.execute('SELECT * FROM test_tarea1_inf239.dbo.Carrito')
-        for row in self.cursor:
-            # get price from productos table
-            self.cursor.execute(
-                'SELECT prod_unit_price FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?', row[0])
-            price = self.cursor.fetchone()[0]
-            # get offer from oferta table
-            self.cursor.execute(
-                'SELECT offer FROM test_tarea1_inf239.dbo.Oferta WHERE prod_id = ?', row[0])
-            offer = self.cursor.fetchone()[0]
-            lleve = int(offer.split('x')[0])
-            pague = int(offer.split('x')[1])
-            # calculate total value
-            total_value = int(row[3]) * int(price)
-            # calculate final value
-            final_value = int(row[3]) * int(price)
-
-            self.cursor.commit()
         self.mostrar_boleta()
 
     def mostrar_boleta(self) -> None:
-        self.cursor.execute('SELECT * FROM test_tarea1_inf239.dbo.Boleta')
-        print(" BOLETA ".center(50, "-"))
+        self.cursor.execute('DELETE FROM test_tarea1_inf239.dbo.Boleta')
+        self.cursor.execute('SELECT * FROM test_tarea1_inf239.dbo.Carrito;')
+        data = self.cursor.fetchall()
+        for carrito_row in data:
+            self.cursor.execute(
+                'SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?;', carrito_row[0])
+            total_price = self.cursor.fetchone()[5] * carrito_row[3]
+            self.cursor.execute(
+                'SELECT * FROM test_tarea1_inf239.dbo.Oferta WHERE prod_id = ?;', carrito_row[0])
+            oferta_row = self.cursor.fetchone()
+            if not oferta_row:
+                oferta_row = (carrito_row[0], '1x1')
+            lleve = int(oferta_row[1].split('x')[0])
+            pague = int(oferta_row[1].split('x')[1])
+            if pague != 0:
+                self.cursor.execute(
+                    'SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?;', carrito_row[0])
+                final_price = ((int(carrito_row[3] / lleve) * pague) + (
+                    carrito_row[3] % lleve)) * self.cursor.fetchone()[5]
+            else:
+                final_price = 0
+            self.cursor.execute(
+                'INSERT INTO test_tarea1_inf239.dbo.Boleta VALUES (?, ?, ?, ?);', carrito_row[0], oferta_row[1], total_price, final_price)
+            self.cursor.commit()
+        self.cursor.execute(
+            'SELECT * FROM test_tarea1_inf239.dbo.Boleta')
         for row in self.cursor:
-            print('ID: {0} | Precio: ${1} | Total: ${2}'.format(row[0], row[2], row[3]))
-        print(" TOTAL: ${} ".format(self.mostrar_valor_total()).center(50, "-"))
-        self.mostrar_valor_total()
+            print("ID: {0} | Oferta: {1} | Total: {2} | Final: {3}".format(
+                row[0], row[1], row[2], row[3]))
 
     def mostrar_valor_total(self, text=False) -> None or int:
         self.cursor.execute(
@@ -161,26 +165,14 @@ class Menu:
     def eliminar_producto(self) -> None:
         prod_id = input("Ingrese el ID del producto: ")
         try:
+            select = self.cursor.execute(
+                'SELECT * FROM test_tarea1_inf239.dbo.Carrito WHERE prod_id = ?', prod_id)
+            print("Se ha eliminado el producto: {}".format(select[1]))
             self.cursor.execute(
                 'DELETE FROM test_tarea1_inf239.dbo.Carrito WHERE prod_id = ?', prod_id)
             self.cursor.commit()
         except pyodbc.ProgrammingError:
             print("Producto no encontrado. ¿Esta seguro que esta en el carrito?")
-
-    def aplicar_oferta(self) -> None:
-        self.cursor.execute(
-            'SELECT * FROM test_tarea1_inf239.dbo.Oferta')
-        ofertas = self.cursor.fetchall()
-        for oferta in ofertas:
-            self.cursor.execute(
-                'SELECT * FROM test_tarea1_inf239.dbo.Carrito WHERE prod_id = ?', oferta[0])
-            row = self.cursor.fetchone()
-            if row:
-                self.cursor.execute(
-                    'UPDATE test_tarea1_inf239.dbo.Boleta SET offer = ? WHERE prod_id = ?', oferta[1], oferta[0])
-                self.cursor.commit()
-                lleve = oferta[1].split('x')[0]
-                pague = oferta[1].split('x')[1]
 
     def salir(self) -> None:
         print("Gracias por su visita")
