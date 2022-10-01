@@ -151,9 +151,9 @@ class Menu:
                 return row[0]
 
     def buscar_producto(self) -> None:
-        id = input("Ingrese el id del producto: ")
+        prod_id = input("Ingrese el id del producto: ")
         self.cursor.execute(
-            'SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?', id)
+            'SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?', prod_id)
         for row in self.cursor:
             print('ID: {0} | Nombre: {1} | Descripcion: {2} | Marca: {3} | Categoria: {4} | Precio: ${5}'.format(
                 row[0], row[1], row[2], row[3], row[4], row[5]))
