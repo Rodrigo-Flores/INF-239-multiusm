@@ -1,13 +1,60 @@
 import re
-from select import select
 import pyodbc
+import pandas as pd
 
 
 class Menu:
     def __init__(self):
+        self.database = 'test_tarea1_inf239'
+        self.server = 'LAPTOP-A43RI4HS\SQLEXPRESS'
+        self.exp = r'(P|p)ague\s\d+\s(L|l)leve\s\d+'
         self.conn = pyodbc.connect(
-            'Driver={SQL Server};Server=LAPTOP-A43RI4HS\SQLEXPRESS;Database=test_tarea1_inf239;Trusted_Connection=yes;')
+            'DRIVER={ODBC Driver 17 for SQL Server};SERVER=' + self.server + ';DATABASE=' + self.database + ';Trusted_Connection=yes;')
         self.cursor = self.conn.cursor()
+        try:
+            self.cursor.execute(
+                'CREATE TABLE {}.dbo.productos (prod_id bigint not null, prod_name nvarchar(150), prod_description nvarchar(150), prod_brand nvarchar(150), category nvarchar(150), prod_unit_price int);'.format(self.database))
+            data = pd.read_csv('data/ProductosVF2.csv',
+                               sep=';', encoding='utf-8')
+            df = pd.DataFrame(data)
+            df = df.where(pd.notnull(df), None)
+            for index, row in df.iterrows():
+                self.cursor.execute('INSERT INTO {}.dbo.productos VALUES (?, ?, ?, ?, ?, ?);'.format(self.database),
+                                    int(row[0]), row[1], row[2], row[3], row[4], int(row[5]))
+            self.cursor.execute(
+                'CREATE TABLE {}.dbo.Carrito (prod_id bigint not null, prod_name nvarchar(150), prod_brand nvarchar(150), quantity int)'.format(self.database))
+            self.cursor.execute(
+                'CREATE TABLE {}.dbo.Boleta (prod_id bigint not null, offer nvarchar(10), total_value int, final_value int);'.format(self.database))
+            self.cursor.execute(
+                'CREATE TABLE {}.dbo.Oferta (prod_id bigint not null, offer nvarchar(10));'.format(self.database))
+            self.cursor.commit()
+            self.cursor.execute(
+                "SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_description LIKE '%Pague%' or prod_description LIKE '%pague%'")
+            rows = self.cursor.fetchall()
+            rows = [row for row in rows if row is not None]
+            new_rows = []
+            for row in rows:
+                if re.search(self.exp, row[2]) is not None:
+                    new_rows.append(row)
+            for row in new_rows:
+                offer = re.search(self.exp, row[2]).group()
+                offer = re.split(r'\s', offer)
+                pague = int(offer[1])
+                lleve = int(offer[3])
+                self.cursor.execute(
+                    "INSERT INTO test_tarea1_inf239.dbo.Oferta VALUES (?, ?)", row[0], '{}x{}'.format(lleve, pague))
+            self.cursor.commit()
+            print(
+                """
+                Base de datos creada exitosamente
+                [ OK ] PRODUCTOS CARGADOS
+                [ OK ] TABLAS CREADAS
+                [ OK ] OFERTAS CARGADAS
+                """
+            )
+            print(" Bienvenido a la tienda virtual ".center(50, '-'))
+        except pyodbc.ProgrammingError:
+            print("Bienvenido/a a la tienda virtual".center(50, '-'))
         self.options = {
             "1": self.mostrar_carrito,
             "2": self.agregar_producto,
@@ -21,16 +68,6 @@ class Menu:
             "10": self.eliminar_producto,
             "11": self.salir
         }
-        try:
-            self.cursor.execute(
-                'CREATE TABLE test_tarea1_inf239.dbo.Carrito (prod_id int, prod_name nvarchar(150), prod_brand nvarchar(150), quantity int)')
-            self.cursor.execute(
-                'CREATE TABLE test_tarea1_inf239.dbo.Boleta (prod_id int, offer nvarchar(10), total_value int, final_value int)')
-            self.cursor.execute(
-                'CREATE TABLE test_tarea1_inf239.dbo.Oferta (prod_id int, offer nvarchar(10)) DEFAULT ?', '1x1')
-            self.cursor.commit()
-        except pyodbc.ProgrammingError:
-            print("Tables already exist")
 
     def display_menu(self):
         print("""
@@ -58,42 +95,46 @@ class Menu:
                 print("{0} is not a valid choice".format(choice))
 
     def mostrar_carrito(self) -> None:
-        self.cursor.execute('SELECT * FROM test_tarea1_inf239.dbo.Carrito')
+        self.cursor.execute(
+            'SELECT * FROM {}.dbo.Carrito;'.format(self.database))
         for row in self.cursor:
             print("ID: {0} | Nombre: {1} | Marca: {2} | Cantidad: {3}".format(
                 row[0], row[1], row[2], row[3]))
 
     def agregar_producto(self) -> None:
-        prod_id = input("Ingrese el ID del producto: ")
-        quantity = input("Ingrese la cantidad: ")
+        prod_id = int(input("Ingrese el ID del producto: "))
+        quantity = int(input("Ingrese la cantidad: "))
         # check if id exists carrito
         self.cursor.execute(
-            'SELECT * FROM test_tarea1_inf239.dbo.Carrito WHERE prod_id = ?;', prod_id)
+            'SELECT * FROM {}.dbo.Carrito WHERE prod_id = ?;'.format(self.database), prod_id)
         row = self.cursor.fetchone()
         if row:
             self.cursor.execute(
-                'UPDATE test_tarea1_inf239.dbo.Carrito SET quantity = quantity + ? WHERE prod_id = ?;', quantity, prod_id)
+                'UPDATE {}.dbo.Carrito SET quantity = quantity + ? WHERE prod_id = ?;'.format(self.database), quantity, prod_id)
             self.cursor.commit()
         else:
             try:
                 self.cursor.execute(
-                    'SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?;', prod_id)
+                    'SELECT * FROM {}.dbo.productos WHERE prod_id = ?;'.format(self.database), prod_id)
                 row = self.cursor.fetchone()
-                self.cursor.execute(
-                    'INSERT INTO test_tarea1_inf239.dbo.Carrito VALUES (?, ?, ?, ?);', row[0], row[1], row[3], quantity)
+                if row:
+                    self.cursor.execute(
+                        'INSERT INTO {}.dbo.Carrito VALUES (?, ?, ?, ?);'.format(self.database), row[0], row[1], row[3], quantity)
+                else:
+                    print("ID no existe")
             except pyodbc.ProgrammingError:
                 print("Producto no existe")
         self.cursor.execute(
-            'SELECT * FROM test_tarea1_inf239.dbo.Oferta WHERE prod_id = ?;', prod_id)
+            'SELECT * FROM {}.dbo.Oferta WHERE prod_id = ?;'.format(self.database), prod_id)
         row = self.cursor.fetchone()
         if row:
             self.cursor.execute(
-                'UPDATE test_tarea1_inf239.dbo.Oferta SET offer = ? WHERE prod_id = ?;', row[1], prod_id)
+                'UPDATE {}.dbo.Oferta SET offer = ? WHERE prod_id = ?;'.format(self.database), row[1], prod_id)
         self.cursor.commit()
 
     def mostrar_top_5(self) -> None:
         self.cursor.execute(
-            'SELECT TOP 5 * FROM test_tarea1_inf239.dbo.productos ORDER BY prod_unit_price DESC;')
+            'SELECT TOP 5 * FROM {}.dbo.productos ORDER BY prod_unit_price DESC;'.format(self.database))
         for row in self.cursor:
             print("ID: {0} | Nombre: {1} | Descripcion: {2} | Marca: {3} | Categoria: {4} | Precio: ${5}".format(
                 row[0], row[1], row[2], row[3], row[4], row[5]))
@@ -101,24 +142,26 @@ class Menu:
     def mostrar_top_5_categoria(self) -> None:
         category = input("Ingrese la categoria: ")
         self.cursor.execute(
-            'SELECT TOP 5 * FROM test_tarea1_inf239.dbo.productos WHERE category = ? ORDER BY prod_unit_price DESC;', category)
+            'SELECT TOP 5 * FROM {}.dbo.productos WHERE category = ? ORDER BY prod_unit_price DESC;'.format(self.database), category)
         for row in self.cursor:
             print("ID: {0} | Nombre: {1} | Descripcion: {2} | Marca: {3} | Categoria: {4} | Precio: ${5}".format(
                 row[0], row[1], row[2], row[3], row[4], row[5]))
 
     def finalizar_compra(self) -> None:
         self.mostrar_boleta()
+        self.salir()
 
     def mostrar_boleta(self) -> None:
-        self.cursor.execute('DELETE FROM test_tarea1_inf239.dbo.Boleta')
-        self.cursor.execute('SELECT * FROM test_tarea1_inf239.dbo.Carrito;')
+        self.cursor.execute('DELETE FROM {}.dbo.Boleta'.format(self.database))
+        self.cursor.execute(
+            'SELECT * FROM {}.dbo.Carrito;'.format(self.database))
         data = self.cursor.fetchall()
         for carrito_row in data:
             self.cursor.execute(
-                'SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?;', carrito_row[0])
+                'SELECT * FROM {}.dbo.productos WHERE prod_id = ?;'.format(self.database), carrito_row[0])
             total_price = self.cursor.fetchone()[5] * carrito_row[3]
             self.cursor.execute(
-                'SELECT * FROM test_tarea1_inf239.dbo.Oferta WHERE prod_id = ?;', carrito_row[0])
+                'SELECT * FROM {}.dbo.Oferta WHERE prod_id = ?;'.format(self.database), carrito_row[0])
             oferta_row = self.cursor.fetchone()
             if not oferta_row:
                 oferta_row = (carrito_row[0], '1x1')
@@ -126,23 +169,23 @@ class Menu:
             pague = int(oferta_row[1].split('x')[1])
             if pague != 0:
                 self.cursor.execute(
-                    'SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?;', carrito_row[0])
+                    'SELECT * FROM {}.dbo.productos WHERE prod_id = ?;'.format(self.database), carrito_row[0])
                 final_price = ((int(carrito_row[3] / lleve) * pague) + (
                     carrito_row[3] % lleve)) * self.cursor.fetchone()[5]
             else:
                 final_price = 0
             self.cursor.execute(
-                'INSERT INTO test_tarea1_inf239.dbo.Boleta VALUES (?, ?, ?, ?);', carrito_row[0], oferta_row[1], total_price, final_price)
+                'INSERT INTO {}.dbo.Boleta VALUES (?, ?, ?, ?);'.format(self.database), carrito_row[0], oferta_row[1], total_price, final_price)
             self.cursor.commit()
         self.cursor.execute(
-            'SELECT * FROM test_tarea1_inf239.dbo.Boleta')
+            'SELECT * FROM {}.dbo.Boleta'.format(self.database))
         for row in self.cursor:
             print("ID: {0} | Oferta: {1} | Total: {2} | Final: {3}".format(
                 row[0], row[1], row[2], row[3]))
 
     def mostrar_valor_total(self, text=False) -> None or int:
         self.cursor.execute(
-            'SELECT SUM(final_value) FROM test_tarea1_inf239.dbo.Boleta')
+            'SELECT SUM(final_value) FROM {}.dbo.Boleta'.format(self.database))
         if text:
             for row in self.cursor:
                 print("Total: {0}".format(row[0]))
@@ -153,26 +196,31 @@ class Menu:
     def buscar_producto(self) -> None:
         prod_id = input("Ingrese el id del producto: ")
         self.cursor.execute(
-            'SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_id = ?', prod_id)
-        for row in self.cursor:
-            print('ID: {0} | Nombre: {1} | Descripcion: {2} | Marca: {3} | Categoria: {4} | Precio: ${5}'.format(
-                row[0], row[1], row[2], row[3], row[4], row[5]))
+            'SELECT * FROM {}.dbo.productos WHERE prod_id = ?;'.format(self.database), prod_id)
+        row = self.cursor.fetchone()
+        if row:
+            for row in self.cursor:
+                print('ID: {0} | Nombre: {1} | Descripcion: {2} | Marca: {3} | Categoria: {4} | Precio: ${5}'.format(
+                    row[0], row[1], row[2], row[3], row[4], row[5]))
+        else:
+            print("Producto no encontrado")
 
     def vaciar_carrito(self) -> None:
-        self.cursor.execute('DELETE FROM test_tarea1_inf239.dbo.Carrito')
+        self.cursor.execute(
+            'DELETE FROM {}.dbo.Carrito;'.format(self.database))
         self.cursor.commit()
 
     def eliminar_producto(self) -> None:
         prod_id = input("Ingrese el ID del producto: ")
         try:
             select = self.cursor.execute(
-                'SELECT * FROM test_tarea1_inf239.dbo.Carrito WHERE prod_id = ?', prod_id)
+                'SELECT * FROM {}.dbo.Carrito WHERE prod_id = ?;'.format(self.database), prod_id)
             print("Se ha eliminado el producto: {}".format(select[1]))
             self.cursor.execute(
-                'DELETE FROM test_tarea1_inf239.dbo.Carrito WHERE prod_id = ?', prod_id)
+                'DELETE FROM {}.dbo.Carrito WHERE prod_id = ?;'.format(self.database), prod_id)
             self.cursor.commit()
-        except pyodbc.ProgrammingError:
-            print("Producto no encontrado. ¿Esta seguro que esta en el carrito?")
+        except:
+            print("Producto no encontrado. Verifique el ID")
 
     def salir(self) -> None:
         print("Gracias por su visita")
