@@ -1,19 +1,61 @@
 import re
+from xmlrpc.client import Boolean
 import pyodbc
 import pandas as pd
 
 
 class Menu:
-    def __init__(self):
-        self.database = 'test_tarea1_inf239'
-        self.server = 'LAPTOP-A43RI4HS\SQLEXPRESS'
+    """
+    Clase para Menu de la aplicacion
+
+    Parmetros:
+    ----------
+        database (str): Nombre de la base de datos
+        server (str): Nombre del servidor
+
+    Atributos:
+    ----------
+        exp (str): Expresion regular para buscar ofertas
+        conn (pyodbc.Connection): Conexion a la base de datos
+        cursor (pyodbc.Cursor): Cursor para ejecutar queries
+        options (dict): Diccionario con las opciones del menu
+
+    Metodos:
+    ----------
+        mostrar_carrito: Muestra el carrito de compras
+        agregar_producto: Agrega un producto al carrito
+        mostrar_top_5: Muestra los 5 productos mas caros
+        mostrar_top_5_categoria: Muestra los 5 productos mas caros segun categoria
+        finalizar_compra: Finaliza la compra
+        mostrar_boleta: Muestra la boleta de compra
+        mostrar_valor_total: Muestra el valor total de la compra
+        buscar_producto: Busca un producto por nombre
+        vaciar_carrito: Vaciar el carrito de compras
+        eliminar_producto: Elimina un producto del carrito
+        salir: Sale de la aplicacion
+
+    """
+
+    def __init__(self, database: str, server: str) -> None:
+        """
+        Constructor de la clase Menu
+
+        Parametros:
+            database (str): Nombre de la base de datos
+            server (str): Nombre del servidor
+
+        Retorna:
+            None
+        """
+        self.database = database
+        self.server = server
         self.exp = r'(P|p)ague\s\d+\s(L|l)leve\s\d+'
         self.conn = pyodbc.connect(
             'DRIVER={ODBC Driver 17 for SQL Server};SERVER=' + self.server + ';DATABASE=' + self.database + ';Trusted_Connection=yes;')
         self.cursor = self.conn.cursor()
         try:
             self.cursor.execute(
-                'CREATE TABLE {}.dbo.productos (prod_id bigint not null, prod_name nvarchar(150), prod_description nvarchar(150), prod_brand nvarchar(150), category nvarchar(150), prod_unit_price int);'.format(self.database))
+                'CREATE TABLE {}.dbo.productos (prod_id bigint not null primary key, prod_name nvarchar(150), prod_description nvarchar(150), prod_brand nvarchar(150), category nvarchar(150), prod_unit_price int);'.format(self.database))
             data = pd.read_csv('data/ProductosVF2.csv',
                                sep=';', encoding='utf-8')
             df = pd.DataFrame(data)
@@ -22,11 +64,11 @@ class Menu:
                 self.cursor.execute('INSERT INTO {}.dbo.productos VALUES (?, ?, ?, ?, ?, ?);'.format(self.database),
                                     int(row[0]), row[1], row[2], row[3], row[4], int(row[5]))
             self.cursor.execute(
-                'CREATE TABLE {}.dbo.Carrito (prod_id bigint not null, prod_name nvarchar(150), prod_brand nvarchar(150), quantity int)'.format(self.database))
+                'CREATE TABLE {}.dbo.Carrito (prod_id bigint not null primary key, prod_name nvarchar(150), prod_brand nvarchar(150), quantity int)'.format(self.database))
             self.cursor.execute(
-                'CREATE TABLE {}.dbo.Boleta (prod_id bigint not null, offer nvarchar(10), total_value int, final_value int);'.format(self.database))
+                'CREATE TABLE {}.dbo.Boleta (prod_id bigint not null primary key, offer nvarchar(10), total_value int, final_value int);'.format(self.database))
             self.cursor.execute(
-                'CREATE TABLE {}.dbo.Oferta (prod_id bigint not null, offer nvarchar(10));'.format(self.database))
+                'CREATE TABLE {}.dbo.Oferta (prod_id bigint not null primary key, offer nvarchar(10));'.format(self.database))
             self.cursor.commit()
             self.cursor.execute(
                 "SELECT * FROM test_tarea1_inf239.dbo.productos WHERE prod_description LIKE '%Pague%' or prod_description LIKE '%pague%'")
@@ -54,7 +96,7 @@ class Menu:
             )
             print(" Bienvenido a la tienda virtual ".center(50, '-'))
         except pyodbc.ProgrammingError:
-            print("Bienvenido/a a la tienda virtual".center(50, '-'))
+            print(" Bienvenido/a a la tienda virtual ".center(50, '-'))
         self.options = {
             "1": self.mostrar_carrito,
             "2": self.agregar_producto,
@@ -69,7 +111,18 @@ class Menu:
             "11": self.salir
         }
 
-    def display_menu(self):
+    def display_menu(self) -> None:
+        """
+        Muestra el menu de la aplicacion
+
+        Parametros:
+        ----------
+            None
+
+        Retorna:
+        ----------
+            None
+        """
         print("""
         1. Mostrar mi carrito
         2. Agregar productos al carrito
@@ -84,7 +137,18 @@ class Menu:
         11. Salir
         """)
 
-    def run(self):
+    def run(self) -> None:
+        """
+        Ejecuta la aplicacion
+
+        Parametros:
+        ----------  
+           None
+
+        Retorna:
+        ----------
+            None
+        """
         while True:
             self.display_menu()
             choice = input("Ingrese una opcion: ")
@@ -95,6 +159,17 @@ class Menu:
                 print("{0} is not a valid choice".format(choice))
 
     def mostrar_carrito(self) -> None:
+        """
+        Muestra el carrito de compras con ofertas aplicadas
+
+        Parametros:
+        ----------  
+           None
+
+        Retorna:
+        ----------
+            None
+        """
         self.cursor.execute(
             'SELECT * FROM {}.dbo.Carrito;'.format(self.database))
         for row in self.cursor:
@@ -102,6 +177,17 @@ class Menu:
                 row[0], row[1], row[2], row[3]))
 
     def agregar_producto(self) -> None:
+        """
+        Agrega un producto al carrito de compras
+
+        Parametros:
+        ----------  
+           None
+
+        Retorna:
+        ----------
+            None
+        """
         prod_id = int(input("Ingrese el ID del producto: "))
         quantity = int(input("Ingrese la cantidad: "))
         # check if id exists carrito
@@ -133,6 +219,17 @@ class Menu:
         self.cursor.commit()
 
     def mostrar_top_5(self) -> None:
+        """
+        Muestra los 5 productos mas caros
+
+        Parametros:
+        ----------  
+           None
+
+        Retorna:
+        ----------
+            None
+        """
         self.cursor.execute(
             'SELECT TOP 5 * FROM {}.dbo.productos ORDER BY prod_unit_price DESC;'.format(self.database))
         for row in self.cursor:
@@ -140,6 +237,17 @@ class Menu:
                 row[0], row[1], row[2], row[3], row[4], row[5]))
 
     def mostrar_top_5_categoria(self) -> None:
+        """
+        Muestra los 5 productos mas caros por categoria
+
+        Parametros:
+        ----------  
+           None
+
+        Retorna:
+        ----------
+            None
+        """
         category = input("Ingrese la categoria: ")
         self.cursor.execute(
             'SELECT TOP 5 * FROM {}.dbo.productos WHERE category = ? ORDER BY prod_unit_price DESC;'.format(self.database), category)
@@ -148,10 +256,32 @@ class Menu:
                 row[0], row[1], row[2], row[3], row[4], row[5]))
 
     def finalizar_compra(self) -> None:
+        """
+        Finaliza la compra y genera un boleta a partir del carrito actual
+
+        Parametros:
+        ----------  
+           None
+
+        Retorna:
+        ----------
+            None
+        """
         self.mostrar_boleta()
         self.salir()
 
     def mostrar_boleta(self) -> None:
+        """
+        Muestra la boleta al usuario, con las ofertas aplicadas
+
+        Parametros:
+        ----------  
+           None
+
+        Retorna:
+        ----------
+            None
+        """
         self.cursor.execute('DELETE FROM {}.dbo.Boleta'.format(self.database))
         self.cursor.execute(
             'SELECT * FROM {}.dbo.Carrito;'.format(self.database))
@@ -183,35 +313,95 @@ class Menu:
             print("ID: {0} | Oferta: {1} | Total: {2} | Final: {3}".format(
                 row[0], row[1], row[2], row[3]))
 
-    def mostrar_valor_total(self, text=False) -> None or int:
+    def mostrar_valor_total(self) -> None:
+        """
+        Muestra el valor total apartir de la boleta
+
+        Parametros:
+        ----------  
+           None
+
+        Retorna:
+        ----------
+            None
+        """
         self.cursor.execute(
             'SELECT SUM(final_value) FROM {}.dbo.Boleta'.format(self.database))
-        if text:
-            for row in self.cursor:
-                print("Total: {0}".format(row[0]))
+        row = self.cursor.fetchone()
+        if row[0]:
+            print("Valor total: ${}".format(row[0]))
         else:
-            for row in self.cursor:
-                return row[0]
+            print("Valor total: $0")
 
     def buscar_producto(self) -> None:
-        prod_id = input("Ingrese el id del producto: ")
+        """
+        Busca un producto por id
+
+        Parametros:
+        ----------
+        None
+
+        """
+        while True:
+            try:
+                prod_id = int(input("Ingrese el ID del producto: "))
+                break
+
+            except KeyboardInterrupt:
+                self.salir()
+
+            except:
+                print("ID no valido")
+
         self.cursor.execute(
             'SELECT * FROM {}.dbo.productos WHERE prod_id = ?;'.format(self.database), prod_id)
         row = self.cursor.fetchone()
         if row:
-            for row in self.cursor:
-                print('ID: {0} | Nombre: {1} | Descripcion: {2} | Marca: {3} | Categoria: {4} | Precio: ${5}'.format(
-                    row[0], row[1], row[2], row[3], row[4], row[5]))
+            print('ID: {0} | Nombre: {1} | Descripcion: {2} | Marca: {3} | Categoria: {4} | Precio: ${5}'.format(
+                row[0], row[1], row[2], row[3], row[4], row[5]))
         else:
             print("Producto no encontrado")
 
     def vaciar_carrito(self) -> None:
+        """
+        Vaciar el carrito de compras
+
+        Parametros:
+        ----------
+            None
+
+        Retorno:
+        ----------
+            None
+        """
         self.cursor.execute(
             'DELETE FROM {}.dbo.Carrito;'.format(self.database))
         self.cursor.commit()
 
     def eliminar_producto(self) -> None:
-        prod_id = input("Ingrese el ID del producto: ")
+        """"
+        Eliminar el producto del carrito por el id
+
+        Parametros:
+        ----------
+           None
+
+        Retorno:
+        ----------
+           None
+
+        """
+        while True:
+            try:
+                prod_id = int(input("Ingrese el ID del producto: "))
+                break
+
+            except KeyboardInterrupt:
+                self.salir()
+
+            except:
+                print("ID no valido")
+
         try:
             select = self.cursor.execute(
                 'SELECT * FROM {}.dbo.Carrito WHERE prod_id = ?;'.format(self.database), prod_id)
@@ -223,5 +413,16 @@ class Menu:
             print("Producto no encontrado. Verifique el ID")
 
     def salir(self) -> None:
+        """
+        Cierra la conexion con la base de datos
+
+        Parametros:
+        ----------
+            None
+
+        Retorna:
+        ----------
+            None
+        """
         print("Gracias por su visita")
         exit()
